@@ -19,15 +19,15 @@ def save_posts(posts):
     with open(DATA_FILE, 'w') as file:
         json.dump(posts, file, indent=4)
 
-
 def calculate_streak(posts):
     if not posts:
         return 0
 
+    posts.sort(key=lambda x: x['timestamp'], reverse=True)
     streak = 1
-    last_date = datetime.fromisoformat(posts[-1]['timestamp']).date()
+    last_date = datetime.fromisoformat(posts[0]['timestamp']).date()
 
-    for post in reversed(posts[:-1]):
+    for post in posts[1:]:
         post_date = datetime.fromisoformat(post['timestamp']).date()
         if (last_date - post_date).days == 1:
             streak += 1
@@ -42,10 +42,13 @@ def calculate_streak(posts):
 
 @app.route('/')
 def index():
+    return render_template('index.html')
+
+@app.route('/posts')
+def get_posts():
     posts = load_posts()
     posts.sort(key=lambda x: x['timestamp'], reverse=True)
-    streak = calculate_streak(posts)
-    return render_template('index.html', posts=posts, streak=streak)
+    return jsonify(posts)
 
 @app.route('/add', methods=['POST'])
 def add_post():
@@ -55,14 +58,12 @@ def add_post():
         if not new_post or 'content' not in new_post:
             return jsonify({"error": "Invalid post data"}), 400
         
-        new_post['id'] = len(posts) + 1  # Generate a new ID
+        new_post['id'] = max([post['id'] for post in posts], default=0) + 1
         new_post['timestamp'] = datetime.now().isoformat()
         posts.append(new_post)
         save_posts(posts)
         
-        # Sort posts by timestamp in descending order
         posts.sort(key=lambda x: x['timestamp'], reverse=True)
-        
         return jsonify(posts)
     except Exception as e:
         app.logger.error(f"Error in add_post: {str(e)}")
@@ -73,15 +74,23 @@ def edit_post(post_id):
     try:
         posts = load_posts()
         edited_post = request.json
+        if not edited_post or 'content' not in edited_post:
+            return jsonify({"error": "Invalid post data"}), 400
+        
         for post in posts:
             if post['id'] == post_id:
                 post['content'] = edited_post['content']
                 post['timestamp'] = datetime.now().isoformat()
                 break
+        else:
+            return jsonify({"error": "Post not found"}), 404
+        
         save_posts(posts)
+        posts.sort(key=lambda x: x['timestamp'], reverse=True)
         return jsonify(posts)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"Error in edit_post: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route('/delete/<int:post_id>', methods=['DELETE'])
 def delete_post(post_id):
@@ -89,10 +98,11 @@ def delete_post(post_id):
         posts = load_posts()
         posts = [post for post in posts if post['id'] != post_id]
         save_posts(posts)
+        posts.sort(key=lambda x: x['timestamp'], reverse=True)
         return jsonify(posts)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"Error in delete_post: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
 
-app = Flask(__name__)
-app.config['JSON_AS_ASCII'] = False
-app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
+if __name__ == '__main__':
+    app.run(debug=True)
