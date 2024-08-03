@@ -19,6 +19,7 @@ def save_posts(posts):
     with open(DATA_FILE, 'w') as file:
         json.dump(posts, file, indent=4)
 
+
 def calculate_streak(posts):
     if not posts:
         return 0
@@ -48,31 +49,50 @@ def index():
 
 @app.route('/add', methods=['POST'])
 def add_post():
-    posts = load_posts()
-    new_post = request.json
-    new_post['timestamp'] = datetime.now().isoformat()
-    posts.append(new_post)
-    save_posts(posts)
-    return jsonify(posts)
+    try:
+        posts = load_posts()
+        new_post = request.json
+        if not new_post or 'content' not in new_post:
+            return jsonify({"error": "Invalid post data"}), 400
+        
+        new_post['id'] = len(posts) + 1  # Generate a new ID
+        new_post['timestamp'] = datetime.now().isoformat()
+        posts.append(new_post)
+        save_posts(posts)
+        
+        # Sort posts by timestamp in descending order
+        posts.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        return jsonify(posts)
+    except Exception as e:
+        app.logger.error(f"Error in add_post: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route('/edit/<int:post_id>', methods=['PUT'])
 def edit_post(post_id):
-    posts = load_posts()
-    edited_post = request.json
-    for post in posts:
-        if post['id'] == post_id:
-            post['content'] = edited_post['content']
-            post['timestamp'] = datetime.now().isoformat()
-            break
-    save_posts(posts)
-    return jsonify(posts)
+    try:
+        posts = load_posts()
+        edited_post = request.json
+        for post in posts:
+            if post['id'] == post_id:
+                post['content'] = edited_post['content']
+                post['timestamp'] = datetime.now().isoformat()
+                break
+        save_posts(posts)
+        return jsonify(posts)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/delete/<int:post_id>', methods=['DELETE'])
 def delete_post(post_id):
-    posts = load_posts()
-    posts = [post for post in posts if post['id'] != post_id]
-    save_posts(posts)
-    return jsonify(posts)
+    try:
+        posts = load_posts()
+        posts = [post for post in posts if post['id'] != post_id]
+        save_posts(posts)
+        return jsonify(posts)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    app.run(debug=True)
+app = Flask(__name__)
+app.config['JSON_AS_ASCII'] = False
+app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
